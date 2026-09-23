@@ -1,6 +1,6 @@
 /* Тюльпаномания — service worker
    При выпуске новой версии увеличьте VERSION: старый кэш удалится сам. */
-const VERSION = "tulip-v8";
+const VERSION = "tulip-v9";
 const SHELL = `${VERSION}-shell`;
 const FONTS = "tulip-fonts";          // шрифты Google меняются редко — кэш без версии
 const SHELL_FILES = [

@@ -63,6 +63,12 @@ header{flex:0 0 auto; display:flex; align-items:baseline; gap:10px; padding:10px
 main{flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:12px 16px 14px; display:flex; flex-direction:column}
 main > .view{flex:0 0 auto; padding-bottom:14px}
 main > #view-table{flex:1 1 auto; display:flex; flex-direction:column; min-height:0; padding-bottom:0}
+/* вкладка, открытая свайпом, въезжает с той стороны, куда вели палец */
+main > .view.slide-next{animation:slide-next .22s cubic-bezier(.2,.75,.3,1)}
+main > .view.slide-prev{animation:slide-prev .22s cubic-bezier(.2,.75,.3,1)}
+@keyframes slide-next{from{transform:translate3d(28%,0,0); opacity:0}}
+@keyframes slide-prev{from{transform:translate3d(-28%,0,0); opacity:0}}
+@media (prefers-reduced-motion:reduce){main > .view.slide-next,main > .view.slide-prev{animation:none}}
 
 nav{flex:0 0 auto; display:flex; border-top:1px solid var(--rule); background:var(--ground-2)}
 nav button{flex:1; padding:11px 2px 13px; background:none; border:0; font-size:clamp(11px,3.4vw,13px); white-space:nowrap; color:var(--ink-soft)}
@@ -622,15 +628,64 @@ function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");cle
    8. Навигация и события
    ===================================================================== */
 const VIEWS={table:renderTable,log:renderLog,hist:renderHistory,deck:renderDeck};
-function show(name){
-  for(const k of Object.keys(VIEWS)){
+const TABS=Object.keys(VIEWS), mainEl=document.querySelector("main");
+let tab="table";
+function show(name,dir){   // dir: +1 — пришли свайпом со следующей стороны, −1 — с предыдущей
+  tab=name;
+  for(const k of TABS){
     $("view-"+k).hidden=k!==name;
     $("tab-"+k).setAttribute("aria-current",k===name?"true":"false");
   }
-  document.querySelector("main").scrollTop=0;
+  mainEl.scrollTop=0;
   VIEWS[name]();
+  const v=$("view-"+name); resetDrag(v); v.classList.remove("slide-next","slide-prev");
+  if(dir){void v.offsetWidth; v.classList.add(dir>0?"slide-next":"slide-prev")}
 }
-for(const k of Object.keys(VIEWS)) $("tab-"+k).addEventListener("click",()=>show(k));
+for(const k of TABS){
+  $("tab-"+k).addEventListener("click",()=>show(k));
+  $("view-"+k).addEventListener("animationend",e=>{if(e.target===e.currentTarget) e.currentTarget.classList.remove("slide-next","slide-prev")});
+}
+
+/* Свайп влево — следующая вкладка, вправо — предыдущая. Экран едет за пальцем.
+   Направление решают первые 10 px: если вертикальное — это прокрутка, не мешаем. */
+let tabSwipe=null, tabSwiped=false;
+const neighbour=dir=>TABS[TABS.indexOf(tab)+dir]||null;
+function paintSwipe(s){
+  s.raf=0; s.el.style.transition="none";
+  const dx=neighbour(s.dx<0?1:-1)?s.dx:s.dx/4;              // у крайней вкладки — тугая резинка
+  s.el.style.transform="translate3d("+dx+"px,0,0)";
+}
+mainEl.addEventListener("touchstart",e=>{
+  if(e.touches.length!==1){tabSwipe=null;return}
+  const t=e.touches[0];
+  tabSwipe={x0:t.clientX, y0:t.clientY, dx:0, v:0, t:Date.now(), active:false, raf:0, el:$("view-"+tab)};
+},{passive:true});
+mainEl.addEventListener("touchmove",e=>{
+  const s=tabSwipe; if(!s) return;
+  const t=e.touches[0], dx=t.clientX-s.x0, dy=t.clientY-s.y0;
+  if(!s.active){
+    if(Math.abs(dx)<10&&Math.abs(dy)<10) return;
+    if(Math.abs(dx)<=Math.abs(dy)*1.3){tabSwipe=null;return}
+    s.active=true;
+  }
+  if(e.cancelable) e.preventDefault();
+  const now=Date.now();
+  s.v=.7*((dx-s.dx)/Math.max(1,now-s.t))+.3*s.v;              // скорость по последним движениям, px/мс
+  s.dx=dx; s.t=now;
+  if(!s.raf) s.raf=requestAnimationFrame(()=>paintSwipe(s));
+},{passive:false});
+function endSwipe(e){
+  const s=tabSwipe; tabSwipe=null; if(!s||!s.active) return;
+  if(s.raf){cancelAnimationFrame(s.raf); s.raf=0}
+  tabSwiped=true; setTimeout(()=>{tabSwiped=false},350);    // тап после свайпа не считается
+  const dir=s.dx<0?1:-1, next=neighbour(dir);
+  const fast=Math.abs(s.v)>.4&&Math.sign(s.v)===Math.sign(s.dx)&&Date.now()-s.t<120;
+  if(e.type==="touchend"&&next&&(Math.abs(s.dx)>70||(fast&&Math.abs(s.dx)>30))){resetDrag(s.el); show(next,dir); return}
+  s.el.style.transition="transform 180ms cubic-bezier(.2,.8,.3,1)"; s.el.style.transform="";
+}
+mainEl.addEventListener("touchend",endSwipe);
+mainEl.addEventListener("touchcancel",endSwipe);
+mainEl.addEventListener("click",e=>{if(tabSwiped){e.stopPropagation();e.preventDefault()}},true); // не открыть карту и не нажать строку
 
 $("deal").addEventListener("click",dealCard);
 // тап по карте (или по рубашке) открывает следующее событие, как взять карту из колоды;
