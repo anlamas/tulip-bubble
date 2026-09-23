@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Тюльпаномания — колода событий</title>
+<meta name="description" content="Замена карт событий для настольной игры «Тюльпаномания»: подготовка колоды по правилам, лента сыгранного и история партий.">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#E8DCC2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1C1611" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Тюльпаны">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* ================= Токены ================= */
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  scroll-padding-top:env(safe-area-inset-top,0px);
+  --ground:#E8DCC2; --ground-2:#DED0B2; --card:#F6EEDC; --card-edge:#CDBC96;
+  --ink:#241D16; --ink-soft:#6B5C49; --rule:#C9B894;
+  --crimson:#9E2530; --gold:#A9781F; --delft:#27456F; --shadow:rgba(53,38,20,.20);
+  /* цвета внутри карт одинаковы в обеих темах — карта всегда бумажная */
+  --paper-ink:#241D16; --paper-text:#3A2E22; --paper-soft:#5A4A38; --paper-line:#3A2E22;
+}
+*,*::before,*::after{box-sizing:inherit}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#1C1611; --ground-2:#241D16; --card:#F1E7D2; --card-edge:#0F0B08;
+    --ink:#F0E6D2; --ink-soft:#A8967C; --rule:#3A2F24;
+    --crimson:#C7414A; --gold:#D0A040; --delft:#6E92C4; --shadow:rgba(0,0,0,.55);
+  }
+}
+html{height:100%}
+body{
+  height:100%; margin:0; display:flex; flex-direction:column;
+  background:var(--ground); color:var(--ink);
+  font-family:Archivo,system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:16px; line-height:1.45; -webkit-text-size-adjust:100%;
+  overscroll-behavior-y:contain;
+}
+button{font:inherit; color:inherit; cursor:pointer}
+[hidden]{display:none !important}
+:focus-visible{outline:2px solid var(--delft); outline-offset:2px}
+
+/* ================= Каркас ================= */
+header{flex:0 0 auto; display:flex; align-items:baseline; gap:10px; padding:10px 16px 8px; border-bottom:1px solid var(--rule)}
+.mark{font-family:"EB Garamond",Georgia,serif; font-size:19px}
+.mark em{font-style:italic; color:var(--crimson)}
+.tally{margin-left:auto; font-size:13px; color:var(--ink-soft); font-variant-numeric:tabular-nums}
+
+main{flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; padding:12px 16px 14px; display:flex; flex-direction:column}
+main > .view{flex:0 0 auto; padding-bottom:14px}
+main > #view-table{flex:1 1 auto; display:flex; flex-direction:column; min-height:0; padding-bottom:0}
+
+nav{flex:0 0 auto; display:flex; border-top:1px solid var(--rule); background:var(--ground-2)}
+nav button{flex:1; padding:11px 2px 13px; background:none; border:0; font-size:clamp(11px,3.4vw,13px); white-space:nowrap; color:var(--ink-soft)}
+nav button[aria-current="true"]{color:var(--crimson); box-shadow:inset 0 2px 0 var(--crimson)}
+
+h2{font-family:"EB Garamond",Georgia,serif; font-weight:600; font-size:21px; margin:20px 0 8px}
+h2:first-child{margin-top:4px}
+.note{color:var(--ink-soft); font-size:14px; margin:0 0 12px; max-width:46ch}
+.empty{border:1px dashed var(--rule); border-radius:8px; padding:22px 18px; text-align:center; color:var(--ink-soft); font-size:14px}
+
+/* ================= Стол ================= */
+.table-wrap{flex:1 1 auto; display:flex; flex-direction:column; justify-content:center; gap:14px; min-height:0}
+.table-wrap > *{width:100%; max-width:420px; margin-left:auto; margin-right:auto}
+.stack{position:relative; flex:1 1 auto; min-height:320px; max-height:720px; cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:manipulation}
+.stack.done{cursor:default}
+.stack .edge{position:absolute; inset:0; border-radius:10px; background:#1B345A; border:1px solid #14284A}
+.stack .edge.e1{transform:translate(6px,6px) rotate(1.1deg)}
+.stack .edge.e2{transform:translate(3px,3px) rotate(-.7deg)}
+
+.actions{flex:0 0 auto; display:flex; gap:8px}
+.btn{flex:1 1 auto; padding:14px 12px; border-radius:8px; border:1px solid var(--crimson); background:var(--crimson); color:#FBF3E4; font-weight:600; font-size:15px}
+.btn:disabled{opacity:.4}
+.btn.ghost{flex:0 0 auto; padding:14px 11px; background:transparent; color:var(--ink); border-color:var(--rule); font-weight:500; font-size:14px}
+.actions .btn{white-space:nowrap; min-height:52px}
+.actions #deal{flex:1 1 0; min-width:0; white-space:normal; line-height:1.15; text-wrap:balance}  /* мало места — подпись в две строки, соседи не выталкиваются */
+@media (max-width:360px){  /* узкие телефоны: три кнопки в ряд должны влезать целиком */
+  .actions{gap:6px}
+  .actions .btn{padding:14px 8px; font-size:14px}
+  .actions .btn.ghost{font-size:13px}
+}
+.mini{padding:6px 10px; border:1px solid var(--rule); border-radius:6px; background:transparent; font-size:14px; line-height:1}
+.mini.danger{color:var(--crimson); border-color:var(--crimson)}
+.tools{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
+#hist-tools{justify-content:flex-end}  /* «Очистить историю» — справа, под большой палец */
+
+/* ================= Лицевая сторона карты ================= */
+.card{
+  position:absolute; inset:0; border-radius:10px; overflow:hidden;
+  display:flex; flex-direction:column; padding:16px 18px 12px;
+  background:var(--card); color:var(--paper-ink); border:1px solid var(--card-edge);
+  box-shadow:0 10px 24px -12px var(--shadow);
+}
+.card.dealt{animation:deal .42s cubic-bezier(.2,.75,.3,1)}
+@keyframes deal{from{transform:translateY(-14px) rotate(-2.5deg); opacity:0} to{transform:none; opacity:1}}
+@media (prefers-reduced-motion:reduce){.card.dealt{animation:none}}
+.card-foot{margin-top:10px; padding-top:7px; border-top:1px solid #D9CAA8; display:flex; justify-content:space-between; font-size:12px; color:#7A6952; font-variant-numeric:tabular-nums}
+
+/* Рост, Скачок, Обвал: бумага, значок с названием, плашка, заголовок, эффект */
+.card.ev{
+  align-items:center; text-align:center; padding:16px 20px 14px;
+  background:
+    radial-gradient(120% 90% at 22% 12%, rgba(255,253,245,.55), transparent 55%),
+    radial-gradient(70% 50% at 85% 92%, rgba(176,134,72,.12), transparent 70%),
+    radial-gradient(ellipse at 50% 46%, transparent 62%, rgba(126,92,48,.13) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .42 0 0 0 0 .31 0 0 0 0 .16 0 0 0 .55 -.18'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E") 0 0/220px 220px,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='600'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012 .04' numOctaves='2' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 .62 0 0 0 0 .48 0 0 0 0 .26 0 0 0 .55 -.24'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E") 0 0/600px 600px,
+    var(--card);
+  box-shadow:0 10px 24px -12px var(--shadow), inset 0 0 0 1px rgba(255,255,255,.45), inset 0 0 28px rgba(126,92,48,.10);
+}
+.card.ev::after{content:""; position:absolute; inset:8px; border:1px solid rgba(140,110,70,.30); border-radius:6px; pointer-events:none}
+.ev-head{align-self:flex-start; display:flex; align-items:center; gap:8px; font-size:14px; font-weight:500; color:var(--paper-soft)}
+.ev-head svg{width:22px; height:22px; display:block}
+.ev-block{
+  flex:0 0 auto; width:min(68%,260px,36vh); aspect-ratio:1; margin:auto auto 16px; border-radius:18px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+  border:3px solid var(--paper-line);
+}
+.ev-block.rise{background-image:linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,0) 45%, rgba(0,0,0,.08)); box-shadow:0 8px 16px -10px rgba(40,25,10,.65), inset 0 1px 0 rgba(255,255,255,.22)}
+.ev-block.red{background-color:#D0434A} .ev-block.yellow{background-color:#EDAE1E} .ev-block.white{background-color:#A8A49B}
+.ev-block.trend{background:linear-gradient(160deg, rgba(255,253,246,.85), rgba(246,236,214,.75)); box-shadow:0 8px 16px -12px rgba(40,25,10,.5)}
+.ev-color{font-family:"EB Garamond",Georgia,serif; font-weight:600; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:#FFFDF7; line-height:1}
+.ev-block.trend .ev-color{color:var(--paper-soft); font-size:12px; letter-spacing:.1em}
+.ev-block svg{width:56%; height:auto; display:block}
+.ev-block.trend svg{width:70%}
+.ev-title{font-family:"EB Garamond",Georgia,serif; font-weight:600; font-size:clamp(34px,10vw,46px); line-height:1; margin:0 0 8px}
+.ev-text{font-family:"EB Garamond",Georgia,serif; font-size:19px; line-height:1.35; white-space:pre-line; color:var(--paper-text); max-width:28ch; overflow-y:auto; flex:0 1 auto; margin-bottom:auto}
+.card.ev .card-foot{align-self:stretch; margin-top:14px}
+
+/* Взрыв пузыря */
+.card.bubble{background:#6E1A22; color:#F6EEDC; border-color:#4A0F15}
+.card.bubble .burst{position:absolute; right:-40px; top:-40px; width:200px; opacity:.13; pointer-events:none}
+.bubble-kicker{margin-top:auto; font-family:"EB Garamond",Georgia,serif; font-size:15px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:#E8B85A}
+.bubble-title{font-family:"EB Garamond",Georgia,serif; font-weight:600; font-size:clamp(34px,10vw,46px); line-height:1.05; margin:2px 0 8px}
+.bubble-rule{height:1px; width:56px; margin:0 0 10px; background:rgba(246,238,220,.35)}
+.bubble-text{font-family:"EB Garamond",Georgia,serif; font-size:20px; line-height:1.4; color:#F1DCCB; margin-bottom:auto}
+.card.bubble .card-foot{border-color:rgba(246,238,220,.22); color:rgba(246,238,220,.7)}
+
+/* ================= Рубашка ================= */
+.back{
+  position:absolute; inset:0; border-radius:10px; border:1px solid #14284A; overflow:hidden; color:#F6EEDC;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Cg fill='none' stroke='%23F6EEDC' stroke-opacity='.16' stroke-width='1'%3E%3Cpath d='M14 7c2.4 3 2.4 5.5 0 7-2.4-1.5-2.4-4 0-7zM14 21c-2.4-3-2.4-5.5 0-7 2.4 1.5 2.4 4 0 7zM7 14c3-2.4 5.5-2.4 7 0-1.5 2.4-4 2.4-7 0zM21 14c-3 2.4-5.5 2.4-7 0 1.5-2.4 4-2.4 7 0z'/%3E%3C/g%3E%3Cg fill='%23F6EEDC' fill-opacity='.16'%3E%3Ccircle r='1.6'/%3E%3Ccircle cx='28' r='1.6'/%3E%3Ccircle cy='28' r='1.6'/%3E%3Ccircle cx='28' cy='28' r='1.6'/%3E%3C/g%3E%3C/svg%3E") center/28px 28px, radial-gradient(circle at 50% 45%, #2E5288 0%, #1F3A63 62%, #182F52 100%);
+  box-shadow:0 10px 24px -12px var(--shadow);
+}
+.back-frame{position:absolute; inset:10px; border:1px solid rgba(246,238,220,.42); border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:18px 16px; text-align:center}
+.back-frame::before{content:""; position:absolute; inset:4px; border:1px solid rgba(246,238,220,.16); border-radius:4px; pointer-events:none}
+.back-label{position:absolute; top:16px; left:0; right:0; font-family:"EB Garamond",Georgia,serif; font-size:13px; letter-spacing:.22em; text-transform:uppercase; color:rgba(246,238,220,.72)}
+.back-emblem{width:min(34%,120px,20vh); display:block; margin-bottom:6px}
+.back-count{font-family:"EB Garamond",Georgia,serif; font-size:56px; line-height:1}
+.back-cap{font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:rgba(246,238,220,.7)}
+.back-hint{position:absolute; bottom:16px; left:18px; right:18px; font-family:"EB Garamond",Georgia,serif; font-style:italic; font-size:15px; line-height:1.3; color:rgba(246,238,220,.78)}
+
+/* ================= Строки: лента, история, справочник ================= */
+.row{display:flex; align-items:center; gap:12px; width:100%; text-align:left; padding:10px 0; background:none; border:0; border-bottom:1px solid var(--rule)}
+.row .body,.item .body{flex:1 1 auto; min-width:0; display:flex; flex-direction:column}
+.row .cap{font-size:12px; color:var(--gold); letter-spacing:.02em}
+.item .cap{font-size:12px; color:var(--gold)}
+.row .t,.item .t{font-family:"EB Garamond",Georgia,serif; font-size:18px}
+.row .s{font-size:13px; color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.item .s{font-size:13px; color:var(--ink-soft)}
+.row .go{flex:0 0 auto; font-size:12px; font-weight:500; padding:6px 10px; border:1.5px solid var(--ink); border-radius:14px}
+.row.current .bd{box-shadow:0 0 0 2px var(--delft)}
+.item{display:flex; align-items:center; gap:12px; margin-top:10px}
+
+.bd{flex:0 0 46px; height:46px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-family:"EB Garamond",Georgia,serif; font-weight:600; font-size:22px; font-variant-numeric:tabular-nums; border:1px solid var(--rule)}
+.bd svg{display:block}
+.bd.icon{border:0; background:none}
+.bd.icon svg{width:46px; height:46px}
+.bd.up{color:var(--gold)} .bd.down{color:var(--crimson)} .bd.count{color:var(--delft)}
+.bd.bubble{background:#6E1A22; border-color:#4A0F15}
+.bd.bubble svg{width:28px}
+.sheet .bd{flex-basis:40px; height:40px; font-size:19px}
+.sheet .bd.icon svg{width:40px; height:40px}
+
+.summary{border:1px solid var(--rule); border-radius:8px; background:var(--ground-2); padding:12px 14px; margin:0 0 6px}
+.sum-top{display:flex; justify-content:space-between; font-size:13px; color:var(--ink-soft); font-variant-numeric:tabular-nums}
+.sum-big{font-family:"EB Garamond",Georgia,serif; font-size:19px; line-height:1.3; margin:8px 0 0}
+.sum-big.over{color:var(--crimson)}
+.sum-sub{font-size:12px; color:var(--gold); margin-top:12px; padding-top:12px; border-top:1px solid var(--rule)}
+.divided{margin-top:12px; padding-top:12px; border-top:1px solid var(--rule)}
+
+/* ================= Лист снизу, уведомление ================= */
+dialog{border:0; padding:0; background:none; max-width:100%; width:100%; max-height:100%; margin:auto auto 0; overflow:hidden} /* лист, уезжающий вниз, не должен растягивать прокрутку */
+dialog::backdrop{background:rgba(12,8,4,.62)}
+.sheet{background:var(--ground); color:var(--ink); border:1px solid var(--rule); border-radius:12px 12px 0 0; padding:16px 16px calc(18px + env(safe-area-inset-bottom,0px)); max-height:86vh; overflow-y:auto}
+.sheet h3{font-family:"EB Garamond",Georgia,serif; font-weight:600; font-size:20px; margin:0 0 12px}
+.sheet .bar{display:flex; gap:10px; margin-top:6px; align-items:center}
+.sheet .bar .btn{flex:1 1 0; min-height:52px; padding:14px 12px; white-space:nowrap} /* кнопки листа — одного размера */
+/* полноэкранный просмотр карты */
+dialog.full{margin:0; width:100%; height:100%; max-height:none}
+dialog.full .sheet{height:100%; max-height:none; overflow:hidden; border:0; border-radius:0; display:flex; flex-direction:column; gap:12px;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 16px calc(env(safe-area-inset-bottom,0px) + 16px)}
+.viewer-bar{flex:0 0 auto; display:flex; width:100%; max-width:520px; margin:0 auto; transition:opacity .2s}
+dialog.full.dragging .viewer-bar{opacity:0}
+.viewer-bar .btn{flex:1 1 auto; min-height:52px}
+.grab{flex:0 0 auto; width:40px; height:5px; border-radius:3px; background:var(--rule); margin:-4px auto 10px}
+dialog.full .grab{margin:0 auto}
+.viewer{flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center; container-type:size}
+dialog.full .preview{will-change:transform,opacity; backface-visibility:hidden}
+dialog:not(.full) .sheet{will-change:transform}
+.preview{position:relative; width:min(100%,520px); height:min(100%,560px); width:min(100cqw,520px); height:min(100cqh, min(100cqw,520px) * 1.95)}
+
+.toast{
+  position:fixed; top:calc(env(safe-area-inset-top,0px) + 10px); right:calc(env(safe-area-inset-right,0px) + 12px); z-index:9;
+  max-width:min(78vw,320px); padding:10px 14px; border-radius:8px;
+  background:#F6EEDC; color:#241D16; border:2.5px solid #3A2E22; box-shadow:0 10px 22px -12px rgba(20,12,4,.55);
+  font-size:14px; line-height:1.35; opacity:0; transform:translateY(-8px); transition:opacity .2s, transform .2s; pointer-events:none;
+}
+.toast.show{opacity:1; transform:none}
+@media (prefers-reduced-motion:reduce){.toast{transition:opacity .2s; transform:none}}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="mark">Тюльпано<em>мания</em></span>
+  <span class="tally" id="tally"></span>
+</header>
+
+<main>
+  <section class="view" id="view-table">
+    <div class="table-wrap">
+      <div class="stack" id="stack" role="button" tabindex="0" aria-label="Открыть следующее событие"></div>
+      <div class="actions">
+        <button class="btn ghost" id="undo">Назад</button>
+        <button class="btn" id="deal">Открыть событие</button>
+        <button class="btn ghost" id="restart">Заново</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="view-log" hidden>
+    <h2>Сыграно</h2>
+    <div id="log"></div>
+  </section>
+
+  <section class="view" id="view-hist" hidden>
+    <h2>История партий</h2>
+    <p class="note">Партии сохраняются сами. Недоигранную можно продолжить с того же места — даже после «Заново».</p>
+    <div id="hist"></div>
+    <div class="tools" id="hist-tools"><button class="mini danger" id="hist-clear">Очистить историю</button></div>
+  </section>
+
+  <section class="view" id="view-deck" hidden>
+    <h2>Карты событий</h2>
+    <p class="note">11 карт по справочнику правил. При подготовке одна карта уходит в коробку втёмную, «Взрыв пузыря» замешивается с двумя нижними — в партии 10 карт.</p>
+    <div id="deck"></div>
+  </section>
+</main>
+
+<nav>
+  <button id="tab-table" aria-current="true">Стол</button>
+  <button id="tab-log">Сыграно</button>
+  <button id="tab-hist">История</button>
+  <button id="tab-deck">Колода</button>
+</nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<dialog id="dlg"><div class="sheet" id="sheet"></div></dialog>
+
+<script>
+(function(){
+"use strict";
+
+/* =====================================================================
+   1. Карты — константы из справочника правил (стр. 12)
+   ===================================================================== */
+const COLORS={
+  red:   {name:"Красный", gen:"красных", fill:"#D0434A"},
+  white: {name:"Белый",   gen:"белых",   fill:"#A8A49B"},
+  yellow:{name:"Жёлтый",  gen:"жёлтых",  fill:"#EDAE1E"},
+};
+const BUBBLE="bubble";
+const CARDS={};  // id → {id, kind: rise|jump|drop|bubble, color?, title, text}
+function defCard(id,kind,title,text,color){CARDS[id]={id,kind,title,text,color:color||null}}
+for(const c of Object.keys(COLORS)) for(const n of [1,2])
+  defCard(c+n,"rise","Рост","Цена "+COLORS[c].gen+" тюльпанов выросла на 1 сегмент.",c);
+defCard("jump","jump","Скачок","Цена тюльпанов самого дешёвого цвета выросла\nна 2 сегмента.");
+for(const n of [1,2,3]) defCard("drop"+n,"drop","Обвал","Цена тюльпанов самого дорогого цвета упала\nна 2 сегмента.");
+defCard(BUBBLE,"bubble","Взрыв пузыря","Игра немедленно заканчивается. Выкупите тюльпаны, купленные в долг, и посчитайте гульдены за ширмой — сами тюльпаны ничего не стоят.");
+
+/* =====================================================================
+   2. Модель партии — чистые функции
+   Партия = порядок колоды, зафиксированный при подготовке, + карта
+   в коробке + сколько карт открыто. Остальное вычисляется.
+   ===================================================================== */
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+
+function newGame(){                                   // подготовка, стр. 4, шаг 4
+  const rest=shuffle(Object.keys(CARDS).filter(id=>id!==BUBBLE));
+  const boxed=rest.pop();                             // А: 1 карта в коробку не глядя
+  const bottom=shuffle(rest.splice(-2).concat(BUBBLE));// Б: 2 нижние + «Взрыв пузыря»
+  return {id:uid(), order:rest.concat(bottom), boxed, open:0, startedAt:null, updatedAt:Date.now()}; // В: 10 карт
+}
+const openedIds  =g=>g.order.slice(0,g.open);
+const leftIds    =g=>g.order.slice(g.open);
+const bubbleRound=g=>{const i=g.order.indexOf(BUBBLE);return i>=0&&i<g.open?i+1:0};
+const isOver     =g=>bubbleRound(g)>0||g.open>=g.order.length;
+const roundLabel =i=>i===1?"Подготовка":"Раунд "+i;   // 1-я карта открывается при подготовке
+const NB=String.fromCharCode(160);                    // неразрывный пробел
+
+function forecast(g){                                 // строка про взрыв пузыря
+  const b=bubbleRound(g), T=g.order.length, k=g.open+1, first=T-2;
+  if(b) return b===1?"Взрыв пузыря вышел при"+NB+"подготовке. Партия окончена.":"Взрыв пузыря вышел в"+NB+"раунде"+NB+b+". Партия окончена.";
+  if(k<first){const safe=first-k;return "Ещё "+safe+NB+plural(safe,"событие","события","событий")+" без взрыва. Взрыв пузыря придёт в"+NB+"раунде"+NB+first+","+NB+(first+1)+NB+"или"+NB+T+".";}
+  const left=T-k+1;
+  return left===1?"Раунд"+NB+k+": взрыв пузыря наверняка — это последняя карта.":"Раунд"+NB+k+": взрыв пузыря с"+NB+"шансом"+NB+"1"+NB+"из"+NB+left+".";
+}
+function isValidGame(g){
+  return g&&typeof g.id==="string"&&Array.isArray(g.order)&&g.order.length>0&&g.order.every(id=>CARDS[id])&&
+    Number.isInteger(g.open)&&g.open>=0&&g.open<=g.order.length&&(g.boxed==null||!!CARDS[g.boxed]);
+}
+
+/* =====================================================================
+   3. Хранилище: один ключ, версия схемы
+   { v:1, current:id, games:[{id, order[], boxed, open, startedAt, updatedAt}] }
+   ===================================================================== */
+const KEY="tulip.state", SCHEMA=1, MAX_GAMES=100;
+let state={v:SCHEMA,current:null,games:[]};
+
+function current(){return state.games.find(g=>g.id===state.current)||null}
+function loadState(){
+  try{
+    const s=JSON.parse(localStorage.getItem(KEY));
+    if(s&&s.v===SCHEMA&&Array.isArray(s.games)) state={v:SCHEMA,current:s.current,games:s.games.filter(isValidGame)};
+    else migrateLegacy();
+  }catch(e){}
+  if(!current()){const g=newGame();state.games.unshift(g);state.current=g.id;}
+}
+function commit(){
+  const g=current(); if(g) g.updatedAt=Date.now();
+  // в истории живут только начатые партии; текущая хранится всегда
+  state.games=state.games.filter(x=>x.id===state.current||x.open>0).sort((a,b)=>b.updatedAt-a.updatedAt);
+  if(state.games.length>MAX_GAMES) state.games=state.games.filter((x,i)=>i<MAX_GAMES||x.id===state.current);
+  try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}
+}
+function migrateLegacy(){ // данные из предыдущих версий приложения (tb.*)
+  try{
+    const old=JSON.parse(localStorage.getItem("tb.hist.v1")||"[]"), s=JSON.parse(localStorage.getItem("tb.sess.v4")||"null");
+    const conv=o=>({id:o.gid||uid(),order:(o.drawn||[]).concat(o.pile||[]),boxed:o.hidden||null,open:(o.drawn||[]).length,startedAt:o.started||null,updatedAt:o.updated||Date.now()});
+    const list=(Array.isArray(old)?old:[]).map(conv);
+    if(s&&Array.isArray(s.pile)&&!list.some(g=>g.id===s.gid)) list.push(conv(s));
+    state.games=list.filter(isValidGame);
+    if(s&&state.games.some(g=>g.id===s.gid)) state.current=s.gid;
+    ["tb.deck.v4","tb.rules.v4","tb.sess.v4","tb.theme.v4","tb.hist.v1"].forEach(k=>localStorage.removeItem(k));
+  }catch(e){}
+}
+
+/* =====================================================================
+   4. Отрисовка: общие куски
+   ===================================================================== */
+const $=id=>document.getElementById(id);
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function plural(n,a,b,c){const m=n%10,h=n%100;return (m===1&&h!==11)?a:(m>=2&&m<=4&&(h<12||h>14))?b:c}
+const cardName=c=>c.kind==="rise"?c.title+" · "+COLORS[c.color].name:c.title;
+function effectLine(c){
+  return {rise:"Цена "+(c.color?COLORS[c.color].gen:"")+" тюльпанов +1 сегмент",jump:"Самый дешёвый цвет +2 сегмента",
+          drop:"Самый дорогой цвет −2 сегмента",bubble:"Игра немедленно заканчивается"}[c.kind];
+}
+function fmtDate(ts){
+  if(!ts) return "";
+  const d=new Date(ts), now=new Date(), day=86400000;
+  const hm=d.toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"});
+  const d0=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime(), n0=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
+  if(d0===n0) return "Сегодня, "+hm;
+  if(n0-d0===day) return "Вчера, "+hm;
+  return d.toLocaleDateString("ru-RU",d.getFullYear()===now.getFullYear()?{day:"numeric",month:"long"}:{day:"numeric",month:"long",year:"numeric"})+", "+hm;
+}
+
+// --- значки ---
+const ARROWS='<path d="M24 40V10"/><path d="M14 20l10-10 10 10"/><path d="M14 29l10-10 10 10"/><path d="M14 38l10-10 10 10"/>';
+function riseIcon(color,framed){
+  const f=COLORS[color].fill;
+  return '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'+
+    (framed?'<rect x="2.5" y="2.5" width="43" height="43" rx="7" fill="'+f+'" stroke="#3A2E22" stroke-width="3.5"/>':'<rect width="48" height="48" rx="9" fill="'+f+'"/>')+
+    '<g fill="none" stroke="#FFFDF7" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">'+ARROWS+'</g></svg>';
+}
+const riseArrows=()=>'<svg viewBox="8 6 32 38" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g fill="none" stroke="#FFFDF7" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">'+ARROWS+'</g></svg>';
+function trendIcon(kind,framed){
+  const d=kind==="jump"?'<path d="M7 36 19 23l8 7 14-16"/><path d="M31 14h10v10"/>':'<path d="M7 13l12 13 8-7 14 16"/><path d="M31 35h10V25"/>';
+  return '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+
+    (framed?'<rect x="2.5" y="2.5" width="43" height="43" rx="7" stroke="#3A2E22" stroke-width="3.5"/>':'')+
+    '<g stroke="'+(kind==="jump"?"#8C6212":"#9E2530")+'" stroke-width="'+(framed?5.2:3.2)+'"'+(framed?' transform="translate(24 24) scale(.68) translate(-24 -24)"':'')+'>'+d+'</g></svg>';
+}
+let RAYS=""; for(let i=0;i<16;i++) RAYS+='<path d="M0 -48 L4 -20 L-4 -20Z" transform="rotate('+(i*22.5)+')"/>';
+const burst=cls=>'<svg'+(cls?' class="'+cls+'"':'')+' viewBox="-50 -50 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g fill="#F6EEDC">'+RAYS+'<circle r="15"/></g></svg>';
+const EMBLEM='<svg class="back-emblem" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#F6EEDC" stroke-linejoin="round" aria-hidden="true">'+
+  '<path d="M40 3 77 40 40 77 3 40Z" stroke-width="1.6"/><path d="M40 11 69 40 40 69 11 40Z" stroke-width="1" stroke-opacity=".5"/>'+
+  '<path d="M40 44c-6.5 0-8.5-5.5-8.5-13l4.2 3.8L40 27l4.3 7.8 4.2-3.8c0 7.5-2 13-8.5 13Z" fill="#F6EEDC" stroke="none"/>'+
+  '<path d="M40 44v14M40 53c-4 0-7-2.5-8-6.5 4 0 7 2.5 8 6.5Zm0 0c4 0 7-2.5 8-6.5-4 0-7 2.5-8 6.5Z" stroke-width="1.6" stroke-linecap="round"/></svg>';
+
+function badge(c){
+  if(c.kind==="rise")   return '<span class="bd icon">'+riseIcon(c.color)+'</span>';
+  if(c.kind==="jump")   return '<span class="bd up">+2</span>';
+  if(c.kind==="drop")   return '<span class="bd down">−2</span>';
+  return '<span class="bd bubble">'+burst()+'</span>';
+}
+const cardItem=(c,cap,cls)=>'<div class="item'+(cls?" "+cls:"")+'">'+badge(c)+'<span class="body"><span class="cap">'+esc(cap)+'</span><span class="t">'+esc(cardName(c))+'</span><span class="s">'+esc(effectLine(c))+'</span></span></div>';
+
+// --- лицо карты и рубашка ---
+function cardFace(c,footL,footR,animate){
+  const foot='<div class="card-foot"><span>'+esc(footL)+'</span><span>'+esc(footR)+'</span></div>', cls=animate?" dealt":"";
+  if(c.kind==="bubble")
+    return '<article class="card bubble'+cls+'">'+burst("burst")+'<div class="bubble-kicker">Конец игры</div><h1 class="bubble-title">'+esc(c.title)+'</h1><div class="bubble-rule"></div><div class="bubble-text">'+esc(c.text)+'</div>'+foot+'</article>';
+  const rise=c.kind==="rise";
+  const head='<div class="ev-head">'+(rise?riseIcon(c.color,true):trendIcon(c.kind,true))+'<span>'+esc(c.title)+'</span></div>';
+  const block=rise
+    ? '<div class="ev-block rise '+c.color+'"><span class="ev-color">'+COLORS[c.color].name+'</span>'+riseArrows()+'</div>'
+    : '<div class="ev-block trend"><span class="ev-color">'+(c.kind==="jump"?"Самый дешёвый":"Самый дорогой")+'</span>'+trendIcon(c.kind,false)+'</div>';
+  return '<article class="card ev'+cls+'">'+head+block+'<h1 class="ev-title">'+esc(c.title)+'</h1><div class="ev-text">'+esc(c.text)+'</div>'+foot+'</article>';
+}
+const cardBack=(count,cap,hint)=>'<div class="back"><div class="back-frame"><div class="back-label">Колода событий</div>'+EMBLEM+
+  '<div class="back-count">'+count+'</div><div class="back-cap">'+esc(cap)+'</div>'+(hint?'<div class="back-hint">'+esc(hint)+'</div>':'')+'</div></div>';
+
+/* =====================================================================
+   5. Экраны
+   ===================================================================== */
+function renderTable(animate){
+  const g=current(), n=g.open, left=g.order.length-n, over=isOver(g);
+  $("tally").textContent=over?"партия окончена":n?roundLabel(n):"до начала партии";
+  const deal=$("deal");
+  deal.disabled=over;
+  deal.textContent=over?"Партия окончена":n?"Событие раунда "+(n+1):"Открыть событие";
+  $("undo").disabled=!n;
+  let h="";
+  if(left>1) h+='<div class="edge e1"></div>';
+  if(left>0) h+='<div class="edge e2"></div>';
+  h+= n ? cardFace(CARDS[g.order[n-1]],roundLabel(n),left?"в колоде "+left:"колода пуста",animate)
+        : cardBack(left,plural(left,"карта","карты","карт")+" в колоде","Первое событие открывается при подготовке, в 1-м раунде фаза событий пропускается.");
+  $("stack").innerHTML=h; $("stack").classList.toggle("done",over);
+  $("tab-log").textContent=n?"Сыграно · "+n:"Сыграно";
+}
+
+function outcomeHTML(g){ // что стало с колодой после окончания партии
+  if(!isOver(g)) return "";
+  let h=g.boxed?cardItem(CARDS[g.boxed],"В коробку ушла","divided"):"";
+  const left=leftIds(g);
+  if(left.length){
+    h+='<div class="sum-sub">Остались в колоде · '+left.length+'</div>';
+    left.forEach((id,i)=>{h+=cardItem(CARDS[id],roundLabel(g.open+i+1)+" · не вышла")});
+  }
+  return h;
+}
+function renderLog(){
+  const g=current(), n=g.open, ids=openedIds(g);
+  let h='<div class="summary"><div class="sum-top"><span>Вскрыто '+n+' из '+g.order.length+'</span><span>в колоде '+(g.order.length-n)+'</span></div>'+
+        '<p class="sum-big'+(isOver(g)?" over":"")+'">'+esc(forecast(g))+'</p>'+outcomeHTML(g)+'</div>';
+  for(let i=n-1;i>=0;i--){
+    const c=CARDS[ids[i]];
+    h+='<button class="row" data-card="'+c.id+'" data-cap="'+esc(roundLabel(i+1))+'">'+badge(c)+'<span class="body"><span class="cap">'+roundLabel(i+1)+'</span><span class="t">'+esc(cardName(c))+'</span><span class="s">'+esc(effectLine(c))+'</span></span></button>';
+  }
+  if(!n) h+='<p class="note" style="margin-top:12px">Пока не открыто ни одной карты.</p>';
+  $("log").innerHTML=h;
+}
+
+function gameStatus(g){
+  const b=bubbleRound(g), n=g.open;
+  if(isOver(g)) return b?"Взрыв пузыря в"+NB+"раунде"+NB+b:"Колода сыграна";
+  return (g.id===state.current?"Идёт сейчас":"Не доиграна")+" · "+(n===1?"подготовка":"раунд"+NB+n);
+}
+function gameSummary(g){
+  const cnt={rise:0,jump:0,drop:0};
+  openedIds(g).forEach(id=>{const k=CARDS[id].kind;if(k in cnt)cnt[k]++});
+  return [cnt.rise&&"Рост ×"+cnt.rise,cnt.jump&&"Скачок ×"+cnt.jump,cnt.drop&&"Обвал ×"+cnt.drop].filter(Boolean).join(" · ")||"—";
+}
+function renderHistory(){
+  const games=state.games.filter(g=>g.open>0);
+  $("hist-tools").hidden=!games.length;
+  $("hist").innerHTML=games.length?games.map(g=>{
+    const cur=g.id===state.current, over=isOver(g);
+    const bd=bubbleRound(g)?'<span class="bd bubble">'+burst()+'</span>':'<span class="bd count">'+g.open+'</span>';
+    return '<button class="row'+(cur?" current":"")+'" data-game="'+g.id+'">'+bd+'<span class="body"><span class="cap">'+esc(fmtDate(g.startedAt||g.updatedAt))+'</span><span class="t">'+esc(gameStatus(g))+'</span><span class="s">'+esc(gameSummary(g))+'</span></span>'+(!over&&!cur?'<span class="go">Продолжить</span>':'')+'</button>';
+  }).join(""):'<div class="empty">Пока нет партий. Партия появится здесь, как только откроете первое событие.</div>';
+}
+
+const DECK_GROUPS=[["red1",2],["white1",2],["yellow1",2],["jump",1],["drop1",3],[BUBBLE,1]];
+function renderDeck(){
+  $("deck").innerHTML=DECK_GROUPS.map(([id,n])=>{const c=CARDS[id];
+    return '<button class="row" data-card="'+id+'" data-cap="Колода событий">'+badge(c)+'<span class="body"><span class="cap">'+n+' '+plural(n,"карта","карты","карт")+'</span><span class="t">'+esc(cardName(c))+'</span><span class="s">'+esc(effectLine(c))+'</span></span></button>';
+  }).join("");
+}
+
+/* =====================================================================
+   6. Действия
+   ===================================================================== */
+function dealCard(){
+  const g=current(); if(isOver(g)) return;
+  g.open++; if(!g.startedAt) g.startedAt=Date.now();
+  commit(); renderTable(true); renderLog();
+  if(g.order[g.open-1]===BUBBLE&&navigator.vibrate){try{navigator.vibrate([120,80,220])}catch(e){}}
+}
+function undoCard(){
+  const g=current(); if(!g.open) return;
+  g.open--; if(!g.open) g.startedAt=null;
+  commit(); renderTable(); renderLog(); toast("Карта возвращена в колоду");
+}
+function restart(){
+  const g=current(), kept=g.open>0&&!isOver(g), ng=newGame();
+  state.games.unshift(ng); state.current=ng.id; commit();   // нетронутая партия удалится сама
+  renderTable(); renderLog();
+  toast(kept?"Партия сохранена в истории. Колода собрана заново":"Колода собрана заново");
+}
+function resume(id){
+  closeSheet();
+  if(id!==state.current){
+    if(!state.games.some(g=>g.id===id)) return;
+    state.current=id; commit(); renderTable(); renderLog();
+    toast("Партия продолжена · "+roundLabel(current().open).toLowerCase());
+  }
+  show("table");
+}
+function removeGame(id){
+  if(id===state.current) return;
+  state.games=state.games.filter(g=>g.id!==id); commit(); closeSheet(); renderHistory(); toast("Партия удалена из истории");
+}
+function clearHistory(){
+  state.games=state.games.filter(g=>g.id===state.current); commit(); renderHistory(); toast("История очищена");
+}
+
+/* =====================================================================
+   7. Листы снизу
+   ===================================================================== */
+const dlg=$("dlg"), sheet=$("sheet");
+function openSheet(html,init,full){
+  dlg.classList.toggle("full",!!full); resetDrag(sheet);
+  sheet.innerHTML='<div class="grab" aria-hidden="true"></div>'+html; if(init) init(sheet); if(!dlg.open) dlg.showModal();
+}
+function closeSheet(){if(dlg.open) dlg.close()}
+dlg.addEventListener("click",e=>{if(e.target===dlg) closeSheet()});
+function ask(title,body,ok,fn){
+  openSheet('<h3>'+esc(title)+'</h3><p class="note">'+esc(body)+'</p><div class="bar"><button class="btn ghost" data-act="close">Нет</button><button class="btn" data-act="ok">'+esc(ok)+'</button></div>',
+    root=>root.querySelector('[data-act="ok"]').addEventListener("click",()=>{closeSheet();fn()}));
+}
+sheet.addEventListener("click",e=>{ // просмотр карты закрывается тапом в любом месте
+  if(swiped) return;
+  if(dlg.classList.contains("full")||e.target.closest('[data-act="close"]')) closeSheet();
+});
+
+/* Свайп вниз закрывает просмотр карты и листы снизу.
+   Лист с прокруткой сначала прокручивается к началу, и только потом тянется вниз. */
+let drag=null, swiped=false;
+function resetDrag(el){if(el){el.style.transition=el.style.transform=el.style.opacity=""}}
+function paintDrag(d){
+  if(!d) return; d.raf=0;
+  d.el.style.transition="none"; if(d.full) dlg.classList.add("dragging");
+  d.el.style.transform="translate3d(0,"+d.dy+"px,0)";
+  if(d.full) d.el.style.opacity=String(Math.max(.35,1-d.dy/500));
+}
+sheet.addEventListener("touchstart",e=>{
+  if(e.touches.length!==1){drag=null;return}
+  const full=dlg.classList.contains("full");
+  drag={y0:e.touches[0].clientY, dy:0, v:0, t:Date.now(), active:false, full, el:full?sheet.querySelector(".preview"):sheet};
+},{passive:true});
+sheet.addEventListener("touchmove",e=>{
+  if(!drag) return;
+  const dy=e.touches[0].clientY-drag.y0;
+  if(!drag.active){
+    if(Math.abs(dy)<8) return;
+    if(dy>0&&(drag.full||sheet.scrollTop<=0)) drag.active=true; else {drag=null;return}
+  }
+  e.preventDefault();
+  const now=Date.now(), ndy=Math.max(0,dy);
+  drag.v=.7*((ndy-drag.dy)/Math.max(1,now-drag.t))+.3*drag.v;   // скорость по последним движениям, px/мс
+  drag.dy=ndy; drag.t=now;
+  if(!drag.raf) drag.raf=requestAnimationFrame(()=>paintDrag(drag));
+},{passive:false});
+function endDrag(){
+  const d=drag; drag=null; if(!d||!d.active) return;
+  if(d.raf){cancelAnimationFrame(d.raf); paintDrag(d);}
+  dlg.classList.remove("dragging");
+  swiped=true; setTimeout(()=>{swiped=false},350);        // тап после свайпа не считается
+  const fast=d.v>.5&&Date.now()-d.t<120;                   // взмах: быстро и палец не остановился
+  const el=d.el;
+  if(d.dy>110||(fast&&d.dy>40)){
+    el.style.transition="transform 140ms cubic-bezier(.2,.6,.35,1), opacity 140ms linear";
+    el.style.transform="translate3d(0,"+(d.full?"100vh":"100%")+",0)";
+    if(d.full){el.style.opacity="0"; dlg.classList.add("dragging");}
+    let done=false; const finish=()=>{if(done) return; done=true; closeSheet(); dlg.classList.remove("dragging")};
+    el.addEventListener("transitionend",finish,{once:true}); setTimeout(finish,190);
+  } else {
+    el.style.transition="transform 180ms cubic-bezier(.2,.8,.3,1), opacity 180ms linear";
+    el.style.transform=""; el.style.opacity="";
+  }
+}
+sheet.addEventListener("touchend",endDrag);
+sheet.addEventListener("touchcancel",endDrag);
+function showCard(id,cap){
+  const c=CARDS[id];
+  openSheet('<div class="viewer"><div class="preview">'+cardFace(c,cap,"",false)+'</div></div><div class="viewer-bar"><button class="btn ghost" data-act="close">Закрыть</button></div>',null,true);
+}
+function showGame(id){
+  const g=state.games.find(x=>x.id===id); if(!g) return;
+  const cur=g.id===state.current, over=isOver(g);
+  let h='<h3>'+esc(fmtDate(g.startedAt||g.updatedAt))+'</h3><p class="note">'+esc(gameStatus(g))+'</p>';
+  if(!over) h+='<div class="bar"><button class="btn" data-act="resume">'+(cur?"Вернуться к столу":"Продолжить партию")+'</button></div>';
+  h+='<div class="sum-sub">События · '+g.open+'</div>';
+  openedIds(g).forEach((cid,i)=>{h+=cardItem(CARDS[cid],roundLabel(i+1))});
+  h+=outcomeHTML(g);   // карта из коробки и остаток — только у законченной партии
+  h+='<div class="bar" style="margin-top:16px">'+(cur?'':'<button class="mini danger" data-act="remove">Удалить из истории</button>')+'<button class="mini" data-act="close">Закрыть</button></div>';
+  openSheet(h,root=>{
+    const r=root.querySelector('[data-act="resume"]'); if(r) r.addEventListener("click",()=>resume(id));
+    const d=root.querySelector('[data-act="remove"]'); if(d) d.addEventListener("click",()=>removeGame(id));
+  });
+}
+function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),2200)}
+
+/* =====================================================================
+   8. Навигация и события
+   ===================================================================== */
+const VIEWS={table:renderTable,log:renderLog,hist:renderHistory,deck:renderDeck};
+function show(name){
+  for(const k of Object.keys(VIEWS)){
+    $("view-"+k).hidden=k!==name;
+    $("tab-"+k).setAttribute("aria-current",k===name?"true":"false");
+  }
+  document.querySelector("main").scrollTop=0;
+  VIEWS[name]();
+}
+for(const k of Object.keys(VIEWS)) $("tab-"+k).addEventListener("click",()=>show(k));
+
+$("deal").addEventListener("click",dealCard);
+// тап по карте (или по рубашке) открывает следующее событие, как взять карту из колоды;
+// повторный тап в течение полсекунды не считается — чтобы двойной тап не открыл две карты
+let lastCardTap=0;
+function tapCard(){const now=Date.now(); if(now-lastCardTap<500) return; lastCardTap=now; dealCard();}
+$("stack").addEventListener("click",tapCard);
+$("stack").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();tapCard()}});
+$("undo").addEventListener("click",undoCard);
+$("restart").addEventListener("click",()=>{
+  const g=current();
+  if(!g.open){restart();return}
+  ask("Начать новую партию?",isOver(g)?"Колода соберётся заново по правилам подготовки.":"Текущая партия сохранится в истории — её можно будет продолжить. Колода соберётся заново по правилам подготовки.","Заново",restart);
+});
+const openCardRow=e=>{const r=e.target.closest("[data-card]");if(r) showCard(r.getAttribute("data-card"),r.getAttribute("data-cap"))};
+$("log").addEventListener("click",openCardRow);
+$("deck").addEventListener("click",openCardRow);
+$("hist").addEventListener("click",e=>{
+  const r=e.target.closest("[data-game]"); if(!r) return;
+  const id=r.getAttribute("data-game");
+  if(e.target.closest(".go")) resume(id); else showGame(id);
+});
+$("hist-clear").addEventListener("click",()=>ask("Очистить историю?","Все партии, кроме той, что сейчас на столе, будут удалены с этого устройства.","Очистить",clearHistory));
+
+/* =====================================================================
+   9. Запуск и PWA
+   ===================================================================== */
+/* Шум бумаги нарисован SVG-фильтрами — браузер пересчитывает их при каждой перерисовке карты.
+   Один раз рисуем их в картинку тем же браузером и подставляем отдельным правилом вместо SVG.
+   Картинку НЕ передаём через CSS-переменную: у значения переменной есть предел ~2 МБ,
+   при превышении браузер выбрасывает весь фон. Если результат не применился — убираем правило. */
+function bakePaper(){
+  const probe=document.createElement("div"); probe.className="card ev"; probe.style.display="none"; document.body.appendChild(probe);
+  const layers=getComputedStyle(probe).backgroundImage;
+  const svgs=[...layers.matchAll(/url\("(data:image\/svg\+xml[^"]+)"\)/g)].map(m=>m[1]);
+  if(svgs.length!==2){probe.remove();return}
+  const plan=[[svgs[0],220,Math.min(2,Math.ceil(window.devicePixelRatio||1))],[svgs[1],600,.5]]; // зерно чёткое, волокна размытые
+  Promise.all(plan.map(([src,size,k])=>new Promise((ok,fail)=>{
+    const img=new Image();
+    img.onload=()=>{try{const c=document.createElement("canvas"); c.width=c.height=Math.round(size*k);
+      c.getContext("2d").drawImage(img,0,0,c.width,c.height); ok(c.toDataURL("image/png"))}catch(e){fail(e)}};
+    img.onerror=fail; img.src=src;
+  }))).then(pngs=>{
+    let css=layers; svgs.forEach((src,n)=>{css=css.replace('url("'+src+'")','url("'+pngs[n]+'")')});
+    const style=document.createElement("style"); style.textContent=".card.ev{background-image:"+css+"}";
+    document.head.appendChild(style);
+    const applied=getComputedStyle(probe).backgroundImage;
+    if(!applied.includes("image/png")||(applied.match(/url\(/g)||[]).length!==2) style.remove(); // не применилось — остаётся SVG
+    probe.remove();
+  }).catch(()=>probe.remove());
+}
+loadState(); commit(); renderTable(); renderLog();
+(window.requestIdleCallback||(f=>setTimeout(f,300)))(bakePaper);  // после первого показа, чтобы не задерживать запуск
+
+if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost"||location.hostname==="127.0.0.1")){
+  window.addEventListener("load",()=>{navigator.serviceWorker.register("sw.js").catch(()=>{})});
+}
+})();
+</script>
+</body>
+</html>
