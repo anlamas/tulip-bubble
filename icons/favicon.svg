@@ -1,0 +1,5 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
+<rect width='64' height='64' rx='14' fill='#1F3A63'/>
+<g transform='translate(32 30) scale(1.55) translate(-40 -42)' fill='none' stroke='#F6EEDC' stroke-linejoin='round'>
+<path d='M40 44c-6.5 0-8.5-5.5-8.5-13l4.2 3.8L40 27l4.3 7.8 4.2-3.8c0 7.5-2 13-8.5 13Z' fill='#F6EEDC' stroke='none'/>
+<path d='M40 44v14M40 53c-4 0-7-2.5-8-6.5 4 0 7 2.5 8 6.5Zm0 0c4 0 7-2.5 8-6.5-4 0-7 2.5-8 6.5Z' stroke-width='2.4' stroke-linecap='round'/></g></svg>

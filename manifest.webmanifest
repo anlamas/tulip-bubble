@@ -1,0 +1,20 @@
+{
+  "id": "./",
+  "name": "Тюльпаномания — колода событий",
+  "short_name": "Тюльпаны",
+  "description": "Замена карт событий для настольной игры «Тюльпаномания»: подготовка колоды по правилам, лента сыгранного и история партий.",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1F3A63",
+  "theme_color": "#1C1611",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
