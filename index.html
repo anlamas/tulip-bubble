@@ -87,6 +87,15 @@ h2:first-child{margin-top:4px}
 .stack .edge{position:absolute; inset:0; border-radius:10px; background:#1B345A; border:1px solid #14284A}
 .stack .edge.e1{transform:translate(6px,6px) rotate(1.1deg)}
 .stack .edge.e2{transform:translate(3px,3px) rotate(-.7deg)}
+/* напоминание на последних трёх картах: «Взрыв пузыря» замешан среди них */
+.warn{flex:0 0 auto; display:flex; align-items:center; gap:11px; padding:7px 14px 7px 7px; border:1px solid var(--rule); border-radius:8px; background:var(--ground-2); text-align:left; -webkit-tap-highlight-color:transparent}
+.warn .bd.bubble{flex-basis:34px; height:34px; border-radius:6px}
+.warn .bd.bubble svg{width:21px}
+.warn-t{font-family:"EB Garamond",Georgia,serif; font-size:17px; line-height:1.25; text-wrap:balance}
+.warn-t b{font-weight:600; color:var(--crimson)}
+.warn.enter{animation:warn-in .35s .15s cubic-bezier(.2,.75,.3,1) both}
+@keyframes warn-in{from{opacity:0; transform:translateY(8px)}}
+@media (prefers-reduced-motion:reduce){.warn.enter{animation:none}}
 
 .actions{flex:0 0 auto; display:flex; gap:8px}
 .btn{flex:1 1 auto; padding:14px 12px; border-radius:8px; border:1px solid var(--crimson); background:var(--crimson); color:#FBF3E4; font-weight:600; font-size:15px}
@@ -241,6 +250,7 @@ dialog:not(.full) .sheet{will-change:transform}
   <section class="view" id="view-table">
     <div class="table-wrap">
       <div class="stack" id="stack" role="button" tabindex="0" aria-label="Открыть следующее событие"></div>
+      <button class="warn" id="warn" hidden></button>
       <div class="actions">
         <button class="btn ghost" id="undo">Назад</button>
         <button class="btn" id="deal">Открыть событие</button>
@@ -448,6 +458,14 @@ function renderTable(animate){
   h+= n ? cardFace(CARDS[g.order[n-1]],roundLabel(n),left?"в колоде "+left:"колода пуста",animate)
         : cardBack(left,plural(left,"карта","карты","карт")+" в колоде","Первое событие открывается при подготовке, в 1-м раунде фаза событий пропускается.");
   $("stack").innerHTML=h; $("stack").classList.toggle("done",over);
+  // по правилам «Взрыв пузыря» лежит в трёх нижних картах — напоминаем, не выдавая, в какой
+  const warn=$("warn"), near=!over&&left<=3&&g.order.includes(BUBBLE);
+  warn.hidden=!near;
+  if(near){
+    warn.innerHTML='<span class="bd bubble">'+burst()+'</span><span class="warn-t"><b>Взрыв пузыря</b> — '+
+      (left>1?"в"+NB+"одной из "+left+NB+"оставшихся карт":"последняя карта в"+NB+"колоде")+'</span>';
+    warn.classList.remove("enter"); if(animate){void warn.offsetWidth; warn.classList.add("enter")}
+  }
   $("tab-log").textContent=n?"Сыграно · "+n:"Сыграно";
 }
 
@@ -694,6 +712,10 @@ let lastCardTap=0;
 function tapCard(){const now=Date.now(); if(now-lastCardTap<500) return; lastCardTap=now; dealCard();}
 $("stack").addEventListener("click",tapCard);
 $("stack").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();tapCard()}});
+$("warn").addEventListener("click",()=>{  // тап по напоминанию — что будет при взрыве
+  const left=leftIds(current()).length;
+  showCard(BUBBLE,left>1?"Одна из "+left+" оставшихся карт":"Последняя карта");
+});
 $("undo").addEventListener("click",undoCard);
 $("restart").addEventListener("click",()=>{
   const g=current();
